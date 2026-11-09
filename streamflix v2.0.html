@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-neutral-950 text-neutral-100 font-sans select-none">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamFlix - Netflix-style Video Streamer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Custom scrollbar for horizontal movie rows */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* Gradient overlays */
+        .hero-gradient {
+            background: linear-gradient(0deg, #0a0a0a 0%, rgba(10,10,10,0.6) 50%, rgba(10,10,10,0.2) 100%);
+        }
+        .card-gradient {
+            background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.85) 100%);
+        }
+        /* Custom Seek Slider */
+        input[type=range] {
+            accent-color: #dc2626;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col min-h-screen overflow-x-hidden bg-[#0a0a0a]">
+
+    <!-- Top Navigation Bar -->
+    <nav id="navbar" class="fixed top-0 left-0 right-0 z-40 transition-colors duration-300 bg-gradient-to-b from-black/90 to-transparent px-4 sm:px-8 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-8">
+            <!-- Brand Logo -->
+            <div class="flex items-center space-x-2 cursor-pointer" onclick="scrollToTop()">
+                <span class="text-red-600 text-3xl font-extrabold tracking-wider drop-shadow-md">STREAMFLIX</span>
+            </div>
+            <!-- Main Nav Links -->
+            <ul class="hidden md:flex space-x-6 text-sm font-medium text-neutral-300">
+                <li class="text-white font-semibold cursor-pointer hover:text-white transition" onclick="scrollToTop()">Home</li>
+                <li class="cursor-pointer hover:text-neutral-400 transition" onclick="scrollToLocal()">Local Movies</li>
+            </ul>
+        </div>
+
+        <div class="flex items-center space-x-4">
+            <!-- Folder & File Input Actions -->
+            <div class="relative flex items-center space-x-2">
+                <!-- Smart Import Button (Triggers Folder Picker on Desktop, Multi-File Select on Mobile) -->
+                <button onclick="triggerSmartImport()" class="cursor-pointer bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-semibold px-3 py-2 rounded-md shadow flex items-center space-x-2 transition">
+                    <i data-lucide="folder-open" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Import Movies / Folder</span>
+                    <span class="sm:hidden">Import Movies</span>
+                </button>
+                
+                <!-- Native Directory Picker (Desktop Chrome/Edge/Firefox) -->
+                <input type="file" id="folder-input" webkitdirectory directory multiple class="hidden" onchange="handleFileSelect(event)" />
+                
+                <!-- Multi-File Picker (Android / iOS / Mobile Safe Fallback) -->
+                <input type="file" id="multi-file-input" accept="video/*,.mkv,.mp4,.avi,.webm,.mov,.m4v" multiple class="hidden" onchange="handleFileSelect(event)" />
+            </div>
+
+            <!-- Profile Badge -->
+            <div class="w-8 h-8 rounded bg-red-700 flex items-center justify-center font-bold text-sm shadow cursor-pointer">
+                SF
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow pb-16">
+        <!-- Hero Section -->
+        <section id="hero-banner" class="relative w-full h-[65vh] sm:h-[75vh] flex items-end justify-start px-6 sm:px-12 pb-12 overflow-hidden bg-neutral-900">
+            <!-- Hero Background Image -->
+            <div id="hero-bg" class="absolute inset-0 bg-cover bg-center transition-all duration-700 transform scale-105" style="background-image: url('https://placehold.co/1920x1080/141414/333333?text=Import+Local+Folder+to+Start');"></div>
+            <!-- Hero Dark Overlay -->
+            <div class="absolute inset-0 hero-gradient"></div>
+
+            <!-- Hero Details -->
+            <div class="relative z-10 max-w-2xl space-y-4">
+                <div class="inline-flex items-center space-x-2 px-2.5 py-1 bg-red-600/90 text-xs font-bold uppercase tracking-wider rounded">
+                    <span id="hero-badge">Featured Film</span>
+                </div>
+                <h1 id="hero-title" class="text-4xl sm:text-6xl font-black tracking-tight text-white drop-shadow-lg">No Movies Loaded</h1>
+                <p id="hero-desc" class="text-sm sm:text-base text-neutral-300 line-clamp-3 leading-relaxed drop-shadow">
+                    Select "Import Folder" or "Add Files" in the top navigation bar to load your local video library. Cover art and video streaming will be processed smoothly locally.
+                </p>
+                <div class="flex items-center space-x-4 pt-2">
+                    <button id="hero-play-btn" onclick="playHeroMedia()" disabled class="flex items-center space-x-2 bg-neutral-600 text-neutral-400 font-bold px-6 py-3 rounded-md shadow text-base transition cursor-not-allowed">
+                        <i data-lucide="play" class="w-5 h-5 fill-current"></i>
+                        <span>Play Movie</span>
+                    </button>
+                    <button onclick="scrollToLocal()" class="flex items-center space-x-2 bg-neutral-800/80 hover:bg-neutral-700/80 backdrop-blur text-white font-semibold px-6 py-3 rounded-md shadow text-base transition">
+                        <i data-lucide="hard-drive" class="w-5 h-5"></i>
+                        <span>Browse Catalog</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Horizontal Media Rows / Grid -->
+        <div class="px-6 sm:px-12 -mt-10 relative z-20 space-y-10">
+            <!-- Local Videos Section -->
+            <section id="local-section">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                    <div class="flex items-center space-x-3">
+                        <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                            <span>Local Movies & Videos</span>
+                            <span id="local-count" class="text-xs bg-neutral-800 border border-neutral-700 text-neutral-400 px-2.5 py-0.5 rounded-full font-normal">0 Files</span>
+                        </h2>
+                    </div>
+
+                    <!-- Search and View Toggle Controls -->
+                    <div class="flex items-center space-x-3">
+                        <div class="relative flex-grow sm:flex-grow-0">
+                            <input type="text" id="search-local" oninput="filterLocalVideos()" placeholder="Search library..." class="w-full sm:w-64 bg-neutral-900 border border-neutral-700 focus:border-red-600 text-xs sm:text-sm text-neutral-200 rounded-md px-3 py-1.5 pl-8 focus:outline-none transition">
+                            <i data-lucide="search" class="w-4 h-4 text-neutral-400 absolute left-2.5 top-2.5"></i>
+                        </div>
+                        <div class="flex items-center bg-neutral-900 border border-neutral-800 rounded-lg p-0.5">
+                            <button id="view-grid-btn" onclick="setLocalViewMode('grid')" class="p-1.5 rounded bg-neutral-800 text-white hover:text-white transition" title="Grid View">
+                                <i data-lucide="grid" class="w-4 h-4"></i>
+                            </button>
+                            <button id="view-carousel-btn" onclick="setLocalViewMode('carousel')" class="p-1.5 rounded text-neutral-400 hover:text-white transition" title="Carousel View">
+                                <i data-lucide="rows-3" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="relative group">
+                    <div id="local-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 py-2">
+                        <!-- Empty state banner -->
+                        <div id="empty-local-msg" class="col-span-full w-full py-16 px-6 rounded-xl border-2 border-dashed border-neutral-800 bg-neutral-900/40 flex flex-col items-center justify-center text-center space-y-3">
+                            <i data-lucide="folder-search" class="w-12 h-12 text-neutral-600"></i>
+                            <div>
+                                <h3 class="text-lg font-semibold text-neutral-300">Your Library is Empty</h3>
+                                <p class="text-xs text-neutral-500 max-w-sm mt-1">Tap "Import Movies / Folder" above. On Android/mobile, long-press a file and select all video files inside your movie folder.</p>
+                            </div>
+                            <button onclick="triggerSmartImport()" class="mt-2 text-xs font-semibold bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/50 px-4 py-2 rounded-lg transition">
+                                Select Movie Files
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Mobile / Android Selection Tip Modal -->
+    <div id="android-tip-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center hidden opacity-0 transition-opacity duration-200 p-4">
+        <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-neutral-800 pb-3">
+                <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                    <i data-lucide="smartphone" class="w-5 h-5 text-red-600"></i>
+                    Android Multi-File Selection
+                </h3>
+                <button onclick="closeAndroidTipModal()" class="text-neutral-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="space-y-3 text-xs sm:text-sm text-neutral-300">
+                <p>Android file managers block direct folder selection for security. You can select an entire folder's contents in two quick steps:</p>
+                <ol class="list-decimal list-inside space-y-2 bg-neutral-950 p-3 rounded-lg border border-neutral-800/80 text-neutral-300 text-xs">
+                    <li>When the file manager opens, navigate inside your movie folder.</li>
+                    <li><strong class="text-white">Long-press</strong> on the first video file, then tap the top menu <strong class="text-white font-semibold">"Select All"</strong> (or tap multiple files).</li>
+                </ol>
+            </div>
+            <div class="flex justify-end space-x-2 pt-2">
+                <button onclick="openAndroidPickerDirectly()" class="w-full py-2.5 rounded-md bg-red-600 text-white text-xs sm:text-sm font-semibold hover:bg-red-700 transition flex items-center justify-center space-x-2">
+                    <i data-lucide="file-video" class="w-4 h-4"></i>
+                    <span>Open File Picker Now</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal to Edit Video Title and Refetch Artwork -->
+    <div id="edit-poster-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden opacity-0 transition-opacity duration-200 p-4">
+        <div class="bg-neutral-900 border border-neutral-800 rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-neutral-800 pb-3">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i data-lucide="edit-3" class="w-5 h-5 text-red-600"></i>
+                    Edit Movie Metadata
+                </h3>
+                <button onclick="closeEditPosterModal()" class="text-neutral-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs font-semibold text-neutral-300">Title</label>
+                    <input type="text" id="edit-title-input" class="w-full bg-neutral-950 border border-neutral-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-red-600 transition">
+                </div>
+                <div>
+                    <label class="text-xs font-semibold text-neutral-300">Year (Optional)</label>
+                    <input type="text" id="edit-year-input" placeholder="e.g. 2024" class="w-full bg-neutral-950 border border-neutral-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-red-600 transition">
+                </div>
+            </div>
+            <div class="flex justify-between items-center pt-2">
+                <button onclick="regenerateFramePoster()" class="px-3 py-2 rounded-md bg-neutral-800 text-neutral-300 text-xs font-semibold hover:bg-neutral-700 transition flex items-center space-x-1">
+                    <i data-lucide="camera" class="w-4 h-4"></i>
+                    <span>Use Video Frame</span>
+                </button>
+                <div class="flex space-x-2">
+                    <button onclick="closeEditPosterModal()" class="px-3 py-2 rounded-md bg-neutral-800 text-neutral-300 text-xs font-semibold hover:bg-neutral-700">Cancel</button>
+                    <button onclick="submitEditPosterSearch()" class="px-4 py-2 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700">Fetch Poster</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Fullscreen Video Player Modal -->
+    <div id="player-modal" class="fixed inset-0 z-50 bg-black flex items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <!-- Close / Back Button -->
+        <button onclick="closePlayer()" class="absolute top-6 left-6 z-40 flex items-center space-x-2 bg-neutral-900/80 hover:bg-neutral-800 text-white px-4 py-2 rounded-full border border-neutral-700 backdrop-blur transition pointer-events-auto">
+            <i data-lucide="arrow-left" class="w-5 h-5"></i>
+            <span class="text-sm font-semibold">Back to Browse</span>
+        </button>
+
+        <!-- Video Element -->
+        <video id="main-video" class="w-full h-full object-contain cursor-pointer" onclick="togglePlayPause()">
+            Your browser does not support standard HTML5 video tags.
+        </video>
+
+        <!-- Video Controls Overlay -->
+        <div id="player-controls" class="absolute inset-0 z-30 flex flex-col justify-between p-6 bg-gradient-to-t from-black/95 via-black/20 to-black/70 pointer-events-none transition-opacity duration-300">
+            <!-- Header title -->
+            <div class="pt-14 px-4 pointer-events-auto">
+                <h3 id="player-movie-title" class="text-xl sm:text-2xl font-extrabold text-white tracking-wide drop-shadow">Now Playing</h3>
+                <p id="player-movie-subtitle" class="text-xs sm:text-sm text-neutral-400">StreamFlix Player</p>
+            </div>
+
+            <!-- Center Play/Pause button -->
+            <div class="self-center pointer-events-auto cursor-pointer" onclick="togglePlayPause()">
+                <div id="center-play-btn" class="w-16 h-16 sm:w-20 sm:h-20 bg-red-600/90 hover:bg-red-600 rounded-full flex items-center justify-center backdrop-blur transition transform hover:scale-110 shadow-2xl">
+                    <i data-lucide="play" class="w-8 h-8 sm:w-10 sm:h-10 text-white fill-white translate-x-0.5"></i>
+                </div>
+            </div>
+
+            <!-- Bottom Controls Bar -->
+            <div class="w-full space-y-3 px-2 sm:px-6 pb-2 pointer-events-auto">
+                <!-- Seek Bar -->
+                <div class="flex items-center space-x-3">
+                    <span id="current-time" class="text-xs font-mono text-neutral-300">00:00</span>
+                    <input type="range" id="seek-bar" value="0" min="0" max="100" class="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer">
+                    <span id="duration-time" class="text-xs font-mono text-neutral-400">00:00</span>
+                </div>
+
+                <!-- Action Controls Row -->
+                <div class="flex items-center justify-between pt-1">
+                    <div class="flex items-center space-x-4 sm:space-x-6">
+                        <!-- Play / Pause button -->
+                        <button onclick="togglePlayPause()" class="text-white hover:text-red-500 transition focus:outline-none">
+                            <i id="control-play-icon" data-lucide="play" class="w-6 h-6 fill-current"></i>
+                        </button>
+                        <!-- Skip 10s Backward -->
+                        <button onclick="skipTime(-10)" class="text-neutral-300 hover:text-white transition focus:outline-none" title="Rewind 10s">
+                            <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+                        </button>
+                        <!-- Skip 10s Forward -->
+                        <button onclick="skipTime(10)" class="text-neutral-300 hover:text-white transition focus:outline-none" title="Forward 10s">
+                            <i data-lucide="rotate-cw" class="w-5 h-5"></i>
+                        </button>
+                        <!-- Volume Control -->
+                        <div class="flex items-center space-x-2 group">
+                            <button onclick="toggleMute()" class="text-neutral-300 hover:text-white transition focus:outline-none">
+                                <i id="volume-icon" data-lucide="volume-2" class="w-5 h-5"></i>
+                            </button>
+                            <input type="range" id="volume-bar" min="0" max="1" step="0.05" value="1" class="w-16 sm:w-24 h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-4">
+                        <!-- Fullscreen Toggle -->
+                        <button onclick="toggleFullscreen()" class="text-neutral-300 hover:text-white transition focus:outline-none" title="Fullscreen">
+                            <i data-lucide="maximize" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        let localVideos = [];
+        let heroVideo = null;
+        let currentViewMode = 'grid';
+        let currentEditingMediaId = null;
+
+        // Detector for Mobile / Android OS
+        const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const isAndroid = /Android/i.test(navigator.userAgent);
+
+        // TMDB API Details
+        const TMDB_API_KEY = 'f796ae8aac3ff2562a892faf8aa60fd4';
+        const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+        const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
+
+        // DOM elements
+        const playerModal = document.getElementById('player-modal');
+        const mainVideo = document.getElementById('main-video');
+        const playerControls = document.getElementById('player-controls');
+        const seekbar = document.getElementById('seek-bar');
+        const volumeBar = document.getElementById('volume-bar');
+        const currentTimeEl = document.getElementById('current-time');
+        const durationTimeEl = document.getElementById('duration-time');
+        const controlPlayIcon = document.getElementById('control-play-icon');
+        const centerPlayBtn = document.getElementById('center-play-btn');
+        const volumeIcon = document.getElementById('volume-icon');
+
+        let hideControlsTimeout;
+
+        window.onload = function() {
+            lucide.createIcons();
+            setupVideoListeners();
+        };
+
+        // Smart Picker Dispatcher: Handles Desktop Directory picking vs Android Multi-file selection
+        function triggerSmartImport() {
+            if (isAndroid) {
+                // Show tip modal for Android users first time or open multi-picker directly
+                if (!localStorage.getItem('sf_android_tip_shown')) {
+                    showAndroidTipModal();
+                } else {
+                    openAndroidPickerDirectly();
+                }
+            } else if (isMobileDevice) {
+                document.getElementById('multi-file-input').click();
+            } else {
+                // Desktop: try native webkitdirectory input first
+                document.getElementById('folder-input').click();
+            }
+        }
+
+        function showAndroidTipModal() {
+            const modal = document.getElementById('android-tip-modal');
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+            localStorage.setItem('sf_android_tip_shown', 'true');
+        }
+
+        function closeAndroidTipModal() {
+            const modal = document.getElementById('android-tip-modal');
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 200);
+        }
+
+        function openAndroidPickerDirectly() {
+            closeAndroidTipModal();
+            document.getElementById('multi-file-input').click();
+        }
+
+        // Parse title and year from filename
+        function parseMovieTitle(filename) {
+            let clean = filename.replace(/\.[^/.]+$/, "");
+            clean = clean.replace(/[\._\-]/g, " ").trim();
+
+            const yearMatch = clean.match(/\b(19\d\d|20\d\d)\b/);
+            let year = yearMatch ? yearMatch[1] : null;
+
+            const tagsRegex = /\b(720p|1080p|2160p|4k|uhd|hd|bluray|bdrip|brrip|dvdrip|web-dl|webdl|webrip|hdrip|hdtv|amzn|nf|netflix|hbo|hulu|dsnp|x264|x265|hevc|h264|h265|aac|ac3|dts|5\.1|7\.1|esub|subbed|english|hindi|dual|multi|hollymoviehd|rarbg|yts|yify|extended|unrated|directors\.cut|remastered|repack|proper)\b/gi;
+
+            if (yearMatch) {
+                const yearIndex = clean.indexOf(yearMatch[0]);
+                let titlePart = clean.substring(0, yearIndex).trim();
+                if (titlePart.length > 0) {
+                    clean = titlePart;
+                }
+            }
+
+            clean = clean.replace(tagsRegex, "").replace(/\s+/g, " ").trim();
+
+            return {
+                title: clean || filename.replace(/\.[^/.]+$/, ""),
+                year: year || ""
+            };
+        }
+
+        // Fetch official high-res poster and backdrop from TMDB API
+        async function fetchTMDBPoster(parsedInfo) {
+            if (!navigator.onLine) return null;
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+            try {
+                let searchUrl = `${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(parsedInfo.title)}`;
+                if (parsedInfo.year) {
+                    searchUrl += `&year=${parsedInfo.year}`;
+                }
+
+                const response = await fetch(searchUrl, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.results && data.results.length > 0) {
+                        const firstResult = data.results[0];
+                        const posterPath = firstResult.poster_path ? `${TMDB_IMAGE_BASE}/w500${firstResult.poster_path}` : null;
+                        const backdropPath = firstResult.backdrop_path ? `${TMDB_IMAGE_BASE}/original${firstResult.backdrop_path}` : null;
+
+                        return {
+                            poster: posterPath,
+                            backdrop: backdropPath || posterPath,
+                            title: firstResult.title || parsedInfo.title,
+                            year: firstResult.release_date ? firstResult.release_date.split('-')[0] : parsedInfo.year,
+                            overview: firstResult.overview || null
+                        };
+                    }
+                }
+            } catch (err) {
+                // Fallback silently to frame generator
+            }
+            return null;
+        }
+
+        // Generate poster frame from video element canvas
+        function generateCanvasFrameThumbnail(file) {
+            return new Promise((resolve) => {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                video.muted = true;
+                video.playsInline = true;
+                
+                const fileURL = URL.createObjectURL(file);
+                video.src = fileURL;
+
+                video.onloadeddata = () => {
+                    video.currentTime = Math.min(5, (video.duration || 10) * 0.15);
+                };
+
+                video.onseeked = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 400;
+                        canvas.height = 600;
+                        const ctx = canvas.getContext('2d');
+                        
+                        const hRatio = canvas.width / (video.videoWidth || 400);
+                        const vRatio = canvas.height / (video.videoHeight || 600);
+                        const ratio = Math.max(hRatio, vRatio);
+                        const centerShiftX = (canvas.width - video.videoWidth * ratio) / 2;
+                        const centerShiftY = (canvas.height - video.videoHeight * ratio) / 2;
+                        
+                        ctx.fillStyle = '#0a0a0a';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight,
+                            centerShiftX, centerShiftY, video.videoWidth * ratio, video.videoHeight * ratio);
+
+                        const posterUrl = canvas.toDataURL('image/jpeg', 0.85);
+                        URL.revokeObjectURL(fileURL);
+                        resolve(posterUrl);
+                    } catch (e) {
+                        URL.revokeObjectURL(fileURL);
+                        resolve(null);
+                    }
+                };
+
+                video.onerror = () => {
+                    URL.revokeObjectURL(fileURL);
+                    resolve(null);
+                };
+            });
+        }
+
+        // Hybrid Cover Loader
+        async function loadCoverArt(file, parsedInfo, mediaId) {
+            const tmdbData = await fetchTMDBPoster(parsedInfo);
+
+            let posterUrl = tmdbData ? tmdbData.poster : null;
+            let backdropUrl = tmdbData ? tmdbData.backdrop : null;
+
+            if (!posterUrl) {
+                posterUrl = await generateCanvasFrameThumbnail(file);
+                backdropUrl = posterUrl;
+            }
+
+            if (posterUrl) {
+                const mediaItem = localVideos.find(m => m.id === mediaId);
+                if (mediaItem) {
+                    mediaItem.poster = posterUrl;
+                    if (backdropUrl) mediaItem.backdrop = backdropUrl;
+                    if (tmdbData && tmdbData.title) mediaItem.title = tmdbData.title;
+                    if (tmdbData && tmdbData.year) mediaItem.year = tmdbData.year;
+                    if (tmdbData && tmdbData.overview) mediaItem.overview = tmdbData.overview;
+                }
+
+                const imgEl = document.getElementById(`poster-${mediaId}`);
+                if (imgEl) imgEl.src = posterUrl;
+
+                if (heroVideo && heroVideo.id === mediaId) {
+                    setHeroMedia(mediaItem);
+                }
+            }
+        }
+
+        // Select Local Video Files/Directory
+        function handleFileSelect(event) {
+            const files = Array.from(event.target.files);
+            const videoFiles = files.filter(file => file.type.startsWith('video/') || /\.(mp4|webm|mkv|mov|avi)$/i.test(file.name));
+
+            if (videoFiles.length === 0) {
+                return;
+            }
+
+            videoFiles.forEach(file => {
+                const fileURL = URL.createObjectURL(file);
+                const parsed = parseMovieTitle(file.name);
+                const mediaId = 'local-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+
+                const localMedia = {
+                    id: mediaId,
+                    title: parsed.title,
+                    year: parsed.year,
+                    rawName: file.name,
+                    description: `Local Video • ${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+                    overview: `Local media file: ${file.name}`,
+                    src: fileURL,
+                    poster: '',
+                    backdrop: '',
+                    fileRef: file
+                };
+
+                localVideos.unshift(localMedia);
+                loadCoverArt(file, parsed, mediaId);
+            });
+
+            if (localVideos.length > 0) {
+                setHeroMedia(localVideos[0]);
+            }
+
+            renderLocalGrid();
+        }
+
+        // Set featured local movie in Hero Banner
+        function setHeroMedia(media) {
+            heroVideo = media;
+            document.getElementById('hero-title').innerText = media.title + (media.year ? ` (${media.year})` : '');
+            document.getElementById('hero-desc').innerText = media.overview || `${media.rawName} — Local offline stream.`;
+            
+            const heroBg = document.getElementById('hero-bg');
+            const bgImage = media.backdrop || media.poster;
+            if (bgImage) {
+                heroBg.style.backgroundImage = `url('${bgImage}')`;
+            }
+
+            const playBtn = document.getElementById('hero-play-btn');
+            playBtn.disabled = false;
+            playBtn.className = "flex items-center space-x-2 bg-white hover:bg-neutral-200 text-black font-bold px-6 py-3 rounded-md shadow text-base transition cursor-pointer";
+        }
+
+        // Play Hero Media
+        function playHeroMedia() {
+            if (heroVideo) {
+                launchStream(heroVideo);
+            }
+        }
+
+        // Create poster card DOM element
+        function createMovieCard(media) {
+            const card = document.createElement('div');
+            const widthClasses = currentViewMode === 'grid' ? 'w-full' : 'flex-none w-44 sm:w-56';
+
+            card.className = `${widthClasses} group relative cursor-pointer rounded-lg overflow-hidden bg-neutral-900 border border-neutral-800 hover:border-red-600 transition-all duration-300 hover:scale-105 hover:z-30 shadow-md`;
+            
+            const posterSrc = media.poster || 'https://placehold.co/400x600/1e1e1e/888888?text=Loading+Poster...';
+
+            card.innerHTML = `
+                <div class="aspect-[2/3] w-full bg-neutral-800 relative">
+                    <img id="poster-${media.id}" src="${posterSrc}" alt="${media.title}" class="w-full h-full object-cover group-hover:opacity-60 transition duration-300">
+                    <div class="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition">
+                        <button onclick="openEditPosterModal(event, '${media.id}')" title="Edit Info / Fetch Poster" class="p-1.5 bg-neutral-900/80 hover:bg-neutral-800 text-neutral-200 rounded-full border border-neutral-700 backdrop-blur">
+                            <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                    <div class="absolute inset-0 card-gradient opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col justify-end p-3" onclick="launchStreamFromCard(event, '${media.id}')">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-white shadow">
+                                <i data-lucide="play" class="w-4 h-4 fill-white translate-x-0.5"></i>
+                            </div>
+                            ${media.year ? `<span class="text-[10px] bg-red-600/90 text-white font-bold px-1.5 py-0.5 rounded">${media.year}</span>` : ''}
+                        </div>
+                        <h4 class="text-sm font-bold text-white line-clamp-1">${media.title}</h4>
+                        <p class="text-[10px] text-neutral-400 line-clamp-2 mt-1">${media.description}</p>
+                    </div>
+                </div>
+            `;
+            return card;
+        }
+
+        function launchStreamFromCard(event, mediaId) {
+            event.stopPropagation();
+            const media = localVideos.find(m => m.id === mediaId);
+            if (media) {
+                setHeroMedia(media);
+                launchStream(media);
+            }
+        }
+
+        // Edit Poster Modal
+        function openEditPosterModal(event, mediaId) {
+            event.stopPropagation();
+            currentEditingMediaId = mediaId;
+            const media = localVideos.find(m => m.id === mediaId);
+            if (!media) return;
+
+            document.getElementById('edit-title-input').value = media.title;
+            document.getElementById('edit-year-input').value = media.year || '';
+
+            const modal = document.getElementById('edit-poster-modal');
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+        }
+
+        function closeEditPosterModal() {
+            const modal = document.getElementById('edit-poster-modal');
+            modal.classList.add('opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 200);
+            currentEditingMediaId = null;
+        }
+
+        async function submitEditPosterSearch() {
+            if (!currentEditingMediaId) return;
+            const media = localVideos.find(m => m.id === currentEditingMediaId);
+            if (!media) return;
+
+            const newTitle = document.getElementById('edit-title-input').value.trim();
+            const newYear = document.getElementById('edit-year-input').value.trim();
+
+            if (newTitle) {
+                media.title = newTitle;
+                media.year = newYear;
+
+                const imgEl = document.getElementById(`poster-${media.id}`);
+                if (imgEl) imgEl.src = 'https://placehold.co/400x600/1e1e1e/888888?text=Searching...';
+
+                closeEditPosterModal();
+                await loadCoverArt(media.fileRef, { title: newTitle, year: newYear }, media.id);
+                renderLocalGrid();
+            }
+        }
+
+        async function regenerateFramePoster() {
+            if (!currentEditingMediaId) return;
+            const media = localVideos.find(m => m.id === currentEditingMediaId);
+            if (!media) return;
+
+            closeEditPosterModal();
+            const framePoster = await generateCanvasFrameThumbnail(media.fileRef);
+            if (framePoster) {
+                media.poster = framePoster;
+                renderLocalGrid();
+                if (heroVideo && heroVideo.id === media.id) setHeroMedia(media);
+            }
+        }
+
+        function setLocalViewMode(mode) {
+            currentViewMode = mode;
+            const gridBtn = document.getElementById('view-grid-btn');
+            const carouselBtn = document.getElementById('view-carousel-btn');
+
+            if (mode === 'grid') {
+                gridBtn.className = 'p-1.5 rounded bg-neutral-800 text-white hover:text-white transition';
+                carouselBtn.className = 'p-1.5 rounded text-neutral-400 hover:text-white transition';
+            } else {
+                carouselBtn.className = 'p-1.5 rounded bg-neutral-800 text-white hover:text-white transition';
+                gridBtn.className = 'p-1.5 rounded text-neutral-400 hover:text-white transition';
+            }
+
+            renderLocalGrid();
+        }
+
+        function filterLocalVideos() {
+            renderLocalGrid();
+        }
+
+        function renderLocalGrid() {
+            const container = document.getElementById('local-container');
+            const localCount = document.getElementById('local-count');
+            const query = (document.getElementById('search-local')?.value || '').toLowerCase();
+
+            const filteredVideos = localVideos.filter(item => item.title.toLowerCase().includes(query) || item.rawName.toLowerCase().includes(query));
+            localCount.innerText = `${filteredVideos.length} Videos`;
+
+            if (currentViewMode === 'grid') {
+                container.className = "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 py-2";
+            } else {
+                container.className = "flex space-x-4 overflow-x-auto no-scrollbar py-2 scroll-smooth";
+            }
+
+            if (filteredVideos.length > 0) {
+                container.innerHTML = '';
+                filteredVideos.forEach(item => {
+                    const card = createMovieCard(item);
+                    container.appendChild(card);
+                });
+            } else {
+                container.innerHTML = `
+                    <div id="empty-local-msg" class="col-span-full w-full py-16 px-6 rounded-xl border-2 border-dashed border-neutral-800 bg-neutral-900/40 flex flex-col items-center justify-center text-center space-y-3">
+                        <i data-lucide="folder-search" class="w-12 h-12 text-neutral-600"></i>
+                        <div>
+                            <h3 class="text-lg font-semibold text-neutral-300">No Matching Local Videos</h3>
+                            <p class="text-xs text-neutral-500 max-w-sm mt-1">Import folder files or adjust your search filter to display media items.</p>
+                        </div>
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        // Stream Player Functions
+        function launchStream(media) {
+            document.getElementById('player-movie-title').innerText = media.title;
+            document.getElementById('player-movie-subtitle').innerText = 'StreamFlix Player';
+
+            mainVideo.src = media.src;
+            playerModal.classList.remove('hidden');
+            setTimeout(() => {
+                playerModal.classList.remove('opacity-0');
+            }, 10);
+
+            mainVideo.play().catch(() => {});
+            updatePlayIcons(true);
+            showControlsTemporarily();
+        }
+
+        function closePlayer() {
+            mainVideo.pause();
+            mainVideo.src = '';
+            playerModal.classList.add('opacity-0');
+            setTimeout(() => {
+                playerModal.classList.add('hidden');
+            }, 300);
+        }
+
+        function togglePlayPause() {
+            if (mainVideo.paused) {
+                mainVideo.play();
+                updatePlayIcons(true);
+            } else {
+                mainVideo.pause();
+                updatePlayIcons(false);
+            }
+        }
+
+        function updatePlayIcons(isPlaying) {
+            if (isPlaying) {
+                controlPlayIcon.setAttribute('data-lucide', 'pause');
+                centerPlayBtn.innerHTML = '<i data-lucide="pause" class="w-8 h-8 sm:w-10 sm:h-10 text-white fill-white"></i>';
+            } else {
+                controlPlayIcon.setAttribute('data-lucide', 'play');
+                centerPlayBtn.innerHTML = '<i data-lucide="play" class="w-8 h-8 sm:w-10 sm:h-10 text-white fill-white translate-x-0.5"></i>';
+            }
+            lucide.createIcons();
+        }
+
+        function setupVideoListeners() {
+            mainVideo.addEventListener('timeupdate', () => {
+                if (!isNaN(mainVideo.duration) && mainVideo.duration > 0) {
+                    const progress = (mainVideo.currentTime / mainVideo.duration) * 100;
+                    seekbar.value = progress;
+                    currentTimeEl.innerText = formatTime(mainVideo.currentTime);
+                    durationTimeEl.innerText = formatTime(mainVideo.duration);
+                }
+            });
+
+            seekbar.addEventListener('input', () => {
+                if (!isNaN(mainVideo.duration) && mainVideo.duration > 0) {
+                    const seekTo = mainVideo.duration * (seekbar.value / 100);
+                    mainVideo.currentTime = seekTo;
+                }
+            });
+
+            volumeBar.addEventListener('input', (e) => {
+                mainVideo.volume = e.target.value;
+                mainVideo.muted = e.target.value === '0';
+                updateVolumeIcon();
+            });
+
+            playerModal.addEventListener('mousemove', showControlsTemporarily);
+        }
+
+        function skipTime(seconds) {
+            if (!isNaN(mainVideo.currentTime)) {
+                mainVideo.currentTime = Math.max(0, Math.min(mainVideo.duration || 0, mainVideo.currentTime + seconds));
+            }
+        }
+
+        function toggleMute() {
+            mainVideo.muted = !mainVideo.muted;
+            if (mainVideo.muted) {
+                volumeBar.value = 0;
+            } else {
+                volumeBar.value = mainVideo.volume || 1;
+            }
+            updateVolumeIcon();
+        }
+
+        function updateVolumeIcon() {
+            if (mainVideo.muted || mainVideo.volume === '0' || mainVideo.volume === 0) {
+                volumeIcon.setAttribute('data-lucide', 'volume-x');
+            } else {
+                volumeIcon.setAttribute('data-lucide', 'volume-2');
+            }
+            lucide.createIcons();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                playerModal.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function showControlsTemporarily() {
+            playerControls.classList.remove('opacity-0');
+            clearTimeout(hideControlsTimeout);
+            hideControlsTimeout = setTimeout(() => {
+                if (!mainVideo.paused) {
+                    playerControls.classList.add('opacity-0');
+                }
+            }, 3500);
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return "00:00";
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+        function scrollToTop() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function scrollToLocal() {
+            document.getElementById('local-section').scrollIntoView({ behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>
